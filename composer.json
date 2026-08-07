@@ -1,8 +1,8 @@
 {
-    "name": "orbiit/exportador-sftp",
-    "description": "Portal para exportação diária de vendas e envio por SFTP",
+    "name": "icordeiro/sales-integration-worker",
+    "description": "Reliable sales integration worker for exporting data from PostgreSQL to SFTP with audit trail, reprocessing and monitoring.",
     "type": "project",
-    "license": "proprietary",
+    "license": "MIT",
     "require": {
         "php": "^8.5",
         "ext-pdo": "*",

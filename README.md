@@ -318,7 +318,8 @@ bin/test-sftp-upload.php
 bin/test-process-sales-export.php
 ```
 
-A próxima etapa do projeto é migrar as regras críticas para testes automatizados com PHPUnit e CI.
+As regras críticas também são cobertas pela suíte automatizada em `tests/`,
+executada localmente com PHPUnit e automaticamente pelo GitHub Actions.
 
 ## Screenshots
 
