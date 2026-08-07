@@ -1,0 +1,12 @@
+[Unit]
+Description=NielsenIQ - Agendamento da exportacao diaria
+
+[Timer]
+OnCalendar=*-*-* 14:00:00
+Persistent=true
+AccuracySec=1min
+
+Unit=nielsen-export.service
+
+[Install]
+WantedBy=timers.target

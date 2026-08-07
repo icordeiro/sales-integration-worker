@@ -1,0 +1,1208 @@
+{% extends 'layouts/base.twig' %}
+
+{% block content %}
+
+<main
+    id="dashboard-app"
+    data-refresh-interval="{{ REFRESH_INTERVAL }}"
+    data-api-resumo="/api/dashboard/resumo"
+    data-api-exportacoes="/api/exportacoes?limit=5000"
+    data-api-detalhe="/api/exportacoes/{id}"
+    data-api-reenviar="/api/exportacoes/{id}/reenviar"
+    data-api-reprocessar="/api/exportacoes/{id}/reprocessar"
+    class="min-h-screen"
+>
+
+    {# ================================================================
+       HEADER
+       ================================================================ #}
+
+    <header
+        class="
+            flex min-h-20
+            items-center justify-between
+            border-b border-slate-200
+            bg-white
+            px-4
+            sm:px-6
+            lg:px-8
+        "
+    >
+
+        <div class="flex items-center gap-3">
+
+            <div
+                class="
+                    grid size-10 place-items-center
+                    rounded-xl
+                    bg-brand-600
+                    text-sm font-bold text-white
+                    shadow-sm
+                "
+            >
+                N
+            </div>
+
+
+            <div>
+
+                <h1
+                    class="
+                        text-base
+                        font-semibold
+                        text-slate-900
+                    "
+                >
+                    NielsenIQ
+                </h1>
+
+                <p
+                    class="
+                        mt-0.5
+                        text-xs
+                        text-slate-500
+                    "
+                >
+                    Monitor de exportações de vendas
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div
+            class="
+                hidden
+                items-center gap-2
+                text-xs text-slate-500
+                sm:flex
+            "
+        >
+
+            <span
+                id="connection-status-dot"
+                class="
+                    size-2
+                    rounded-full
+                    bg-slate-300
+                "
+            ></span>
+
+            <span id="connection-status-text">
+                Atualizando...
+            </span>
+
+        </div>
+
+    </header>
+
+
+    {# ================================================================
+       FLUID CONTAINER
+       ================================================================ #}
+
+    <div
+        class="
+            w-full
+            px-4 py-5
+            sm:px-6
+            lg:px-8
+        "
+    >
+
+
+        {# ============================================================
+           CARDS
+           ============================================================ #}
+
+        <section
+            class="
+                grid
+                grid-cols-1
+                gap-4
+                sm:grid-cols-2
+                xl:grid-cols-4
+            "
+        >
+
+
+            {# Card 01 - Último movimento #}
+
+            <article
+                class="
+                    flex min-h-44
+                    flex-col
+                    rounded-xl
+                    border border-slate-200
+                    bg-white
+                    p-5
+                    shadow-sm
+                "
+            >
+
+                <div
+                    class="
+                        flex
+                        items-start
+                        justify-between
+                        gap-3
+                    "
+                >
+
+                    <div>
+
+                        <span
+                            class="
+                                text-xs
+                                font-medium
+                                text-slate-500
+                            "
+                        >
+                            Último movimento
+                        </span>
+
+
+                        <div
+                            id="last-movement-date"
+                            class="
+                                mt-2
+                                text-2xl
+                                font-bold
+                                tracking-tight
+                                text-slate-900
+                            "
+                        >
+                            —
+                        </div>
+
+                    </div>
+
+
+                    <span
+                        id="last-movement-status"
+                        class="
+                            status-badge
+                            status-neutral
+                        "
+                    >
+                        —
+                    </span>
+
+                </div>
+
+
+                <div class="mt-auto pt-5">
+
+                    <p
+                        id="last-file-name"
+                        class="
+                            truncate
+                            text-xs
+                            font-medium
+                            text-slate-700
+                        "
+                    >
+                        —
+                    </p>
+
+
+                    <div
+                        class="
+                            mt-2
+                            flex flex-wrap
+                            gap-x-4 gap-y-1
+                            text-[11px]
+                            text-slate-400
+                        "
+                    >
+
+                        <span>
+
+                            <strong
+                                id="last-record-count"
+                                class="
+                                    font-semibold
+                                    text-slate-600
+                                "
+                            >
+                                —
+                            </strong>
+
+                            registros
+
+                        </span>
+
+
+                        <span id="last-duration">
+                            —
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+
+            {# Card 02 - Em andamento #}
+
+            <article
+                class="
+                    flex min-h-44
+                    flex-col
+                    rounded-xl
+                    border border-slate-200
+                    bg-white
+                    p-5
+                    shadow-sm
+                "
+            >
+
+                <span
+                    class="
+                        text-xs
+                        font-medium
+                        text-slate-500
+                    "
+                >
+                    Em andamento
+                </span>
+
+
+                <strong
+                    id="running-count"
+                    class="
+                        mt-2
+                        text-3xl
+                        font-bold
+                        tracking-tight
+                        text-slate-900
+                    "
+                >
+                    —
+                </strong>
+
+
+                <p
+                    class="
+                        mt-auto
+                        text-xs
+                        text-slate-400
+                    "
+                >
+                    Execuções em processamento
+                </p>
+
+            </article>
+
+
+            {# Card 03 - Falhas #}
+
+            <article
+                class="
+                    flex min-h-44
+                    flex-col
+                    rounded-xl
+                    border border-slate-200
+                    bg-white
+                    p-5
+                    shadow-sm
+                "
+            >
+
+                <span
+                    class="
+                        text-xs
+                        font-medium
+                        text-slate-500
+                    "
+                >
+                    Falhas recentes
+                </span>
+
+
+                <strong
+                    id="failure-count"
+                    class="
+                        mt-2
+                        text-3xl
+                        font-bold
+                        tracking-tight
+                        text-slate-900
+                    "
+                >
+                    —
+                </strong>
+
+
+                <p
+                    class="
+                        mt-auto
+                        text-xs
+                        text-slate-400
+                    "
+                >
+                    Registradas nos últimos 7 dias
+                </p>
+
+            </article>
+
+
+            {# Card 04 - Último envio #}
+
+            <article
+                class="
+                    flex min-h-44
+                    flex-col
+                    rounded-xl
+                    border border-slate-200
+                    bg-white
+                    p-5
+                    shadow-sm
+                "
+            >
+
+                <span
+                    class="
+                        text-xs
+                        font-medium
+                        text-slate-500
+                    "
+                >
+                    Último envio concluído
+                </span>
+
+
+                <strong
+                    id="last-success-date"
+                    class="
+                        mt-2
+                        text-2xl
+                        font-bold
+                        tracking-tight
+                        text-slate-900
+                    "
+                >
+                    —
+                </strong>
+
+
+                <p
+                    id="last-success-time"
+                    class="
+                        mt-auto
+                        text-xs
+                        text-slate-400
+                    "
+                >
+                    Nenhum envio concluído
+                </p>
+
+            </article>
+
+        </section>
+
+
+        {# ============================================================
+           HISTÓRICO
+           ============================================================ #}
+
+        <section
+            class="
+                mt-4
+                overflow-hidden
+                rounded-xl
+                border border-slate-200
+                bg-white
+                shadow-sm
+            "
+        >
+
+            <header
+                class="
+                    flex
+                    flex-col gap-4
+                    border-b border-slate-200
+                    px-5 py-4
+                    lg:flex-row
+                    lg:items-center
+                    lg:justify-between
+                "
+            >
+
+                <div>
+
+                    <h2
+                        class="
+                            text-sm
+                            font-semibold
+                            text-slate-900
+                        "
+                    >
+                        Histórico de exportações
+                    </h2>
+
+
+                    <p
+                        class="
+                            mt-1
+                            text-xs
+                            text-slate-500
+                        "
+                    >
+                        Execuções registradas no monitor NielsenIQ
+                    </p>
+
+                </div>
+
+
+                <div
+                    class="
+                        flex
+                        flex-wrap
+                        items-center
+                        gap-2
+                    "
+                >
+
+                    <button
+                        id="export-excel"
+                        type="button"
+                        class="
+                            inline-flex
+                            items-center
+                            gap-2
+                            rounded-lg
+                            border border-slate-200
+                            bg-white
+                            px-3 py-2
+                            text-xs
+                            font-medium
+                            text-slate-700
+                            shadow-sm
+                            transition
+                            hover:bg-slate-50
+                        "
+                    >
+                        ↓ Excel
+                    </button>
+
+
+                    <button
+                        id="export-pdf"
+                        type="button"
+                        class="
+                            inline-flex
+                            items-center
+                            gap-2
+                            rounded-lg
+                            border border-slate-200
+                            bg-white
+                            px-3 py-2
+                            text-xs
+                            font-medium
+                            text-slate-700
+                            shadow-sm
+                            transition
+                            hover:bg-slate-50
+                        "
+                    >
+                        ↓ PDF
+                    </button>
+
+
+                    <div
+                        class="
+                            ml-1
+                            text-[11px]
+                            text-slate-400
+                        "
+                    >
+                        Atualização automática
+
+                        <strong
+                            class="
+                                font-semibold
+                                text-slate-600
+                            "
+                        >
+                            15s
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </header>
+
+
+            <div id="history-table"></div>
+
+        </section>
+
+
+        {# ============================================================
+           FOOTER
+           ============================================================ #}
+
+        <footer
+            class="
+                flex
+                flex-col gap-1
+                px-1 pt-4
+                text-[11px]
+                text-slate-400
+                sm:flex-row
+                sm:justify-between
+            "
+        >
+
+            <span>
+                Monitor NielsenIQ
+            </span>
+
+            <span id="last-dashboard-update">
+                —
+            </span>
+
+        </footer>
+
+    </div>
+
+</main>
+
+
+{# ====================================================================
+   DETALHE DA EXECUÇÃO
+   ==================================================================== #}
+
+<dialog
+    id="execution-dialog"
+    class="
+        execution-dialog
+        overflow-hidden
+        rounded-2xl
+        border-0
+        bg-white
+        p-0
+        shadow-2xl
+    "
+>
+
+    <div>
+        <header
+            class="
+                sticky
+                top-0
+                z-10
+                flex
+                items-start
+                justify-between
+                border-b border-slate-200
+                bg-white/95
+                px-6 py-5
+                backdrop-blur
+            "
+        >
+
+            <div>
+
+                <span
+                    class="
+                        text-[11px]
+                        font-semibold
+                        uppercase
+                        tracking-wide
+                        text-slate-400
+                    "
+                >
+                    Detalhes da execução
+                </span>
+
+
+                <h2
+                    id="detail-title"
+                    class="
+                        mt-1
+                        text-xl
+                        font-semibold
+                        text-slate-900
+                    "
+                >
+                    Execução
+                </h2>
+
+            </div>
+
+
+            <button
+                id="detail-close"
+                type="button"
+                aria-label="Fechar"
+                class="
+                    grid size-9
+                    place-items-center
+                    rounded-lg
+                    bg-slate-100
+                    text-xl
+                    text-slate-500
+                    transition
+                    hover:bg-slate-200
+                "
+            >
+                ×
+            </button>
+
+        </header>
+
+
+        <div
+            id="detail-loading"
+            class="
+                px-6 py-16
+                text-center
+                text-sm
+                text-slate-400
+            "
+        >
+            Carregando...
+        </div>
+
+
+        <div
+            id="detail-content"
+            hidden
+        >
+
+            {# Resumo #}
+
+            <section
+                class="
+                    grid
+                    grid-cols-2
+                    gap-3
+                    px-6 py-5
+                    md:grid-cols-3
+                "
+            >
+
+                <div class="rounded-lg bg-slate-50 px-4 py-3">
+
+                    <span
+                        class="
+                            block
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-slate-400
+                        "
+                    >
+                        Movimento
+                    </span>
+
+                    <strong
+                        id="detail-movement"
+                        class="
+                            mt-1 block
+                            text-sm
+                            font-semibold
+                            text-slate-800
+                        "
+                    >
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="rounded-lg bg-slate-50 px-4 py-3">
+
+                    <span
+                        class="
+                            block
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-slate-400
+                        "
+                    >
+                        Tipo
+                    </span>
+
+                    <strong
+                        id="detail-type"
+                        class="
+                            mt-1 block
+                            text-sm
+                            font-semibold
+                            text-slate-800
+                        "
+                    >
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="rounded-lg bg-slate-50 px-4 py-3">
+
+                    <span
+                        class="
+                            block
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-slate-400
+                        "
+                    >
+                        Status
+                    </span>
+
+                    <strong
+                        id="detail-status"
+                        class="
+                            mt-1 block
+                            text-sm
+                            font-semibold
+                            text-slate-800
+                        "
+                    >
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="rounded-lg bg-slate-50 px-4 py-3">
+
+                    <span
+                        class="
+                            block
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-slate-400
+                        "
+                    >
+                        Registros
+                    </span>
+
+                    <strong
+                        id="detail-records"
+                        class="
+                            mt-1 block
+                            text-sm
+                            font-semibold
+                            text-slate-800
+                        "
+                    >
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="rounded-lg bg-slate-50 px-4 py-3">
+
+                    <span
+                        class="
+                            block
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-slate-400
+                        "
+                    >
+                        Tamanho
+                    </span>
+
+                    <strong
+                        id="detail-size"
+                        class="
+                            mt-1 block
+                            text-sm
+                            font-semibold
+                            text-slate-800
+                        "
+                    >
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="rounded-lg bg-slate-50 px-4 py-3">
+
+                    <span
+                        class="
+                            block
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-slate-400
+                        "
+                    >
+                        Tempo
+                    </span>
+
+                    <strong
+                        id="detail-duration"
+                        class="
+                            mt-1 block
+                            text-sm
+                            font-semibold
+                            text-slate-800
+                        "
+                    >
+                        —
+                    </strong>
+
+                </div>
+
+            </section>
+
+
+            {# Arquivo #}
+
+            <section class="px-6 pb-6">
+
+                <h3
+                    class="
+                        mb-3
+                        text-sm
+                        font-semibold
+                        text-slate-800
+                    "
+                >
+                    Arquivo
+                </h3>
+
+
+                <dl
+                    class="
+                        divide-y
+                        divide-slate-100
+                        overflow-hidden
+                        rounded-lg
+                        border border-slate-200
+                    "
+                >
+
+                    <div
+                        class="
+                            grid gap-1
+                            px-4 py-3
+                            md:grid-cols-[140px_1fr]
+                        "
+                    >
+
+                        <dt class="text-xs text-slate-400">
+                            Nome
+                        </dt>
+
+                        <dd
+                            id="detail-file"
+                            class="
+                                m-0
+                                break-all
+                                text-xs
+                                text-slate-700
+                            "
+                        >
+                            —
+                        </dd>
+
+                    </div>
+
+
+                    <div
+                        class="
+                            grid gap-1
+                            px-4 py-3
+                            md:grid-cols-[140px_1fr]
+                        "
+                    >
+
+                        <dt class="text-xs text-slate-400">
+                            Destino remoto
+                        </dt>
+
+                        <dd
+                            id="detail-remote-path"
+                            class="
+                                m-0
+                                break-all
+                                text-xs
+                                text-slate-700
+                            "
+                        >
+                            —
+                        </dd>
+
+                    </div>
+
+
+                    <div
+                        class="
+                            grid gap-1
+                            px-4 py-3
+                            md:grid-cols-[140px_1fr]
+                        "
+                    >
+
+                        <dt class="text-xs text-slate-400">
+                            SHA-256
+                        </dt>
+
+                        <dd
+                            id="detail-sha"
+                            class="
+                                m-0
+                                break-all
+                                font-mono
+                                text-[11px]
+                                text-slate-600
+                            "
+                        >
+                            —
+                        </dd>
+
+                    </div>
+
+                </dl>
+
+            </section>
+
+
+            {# Comparação com a execução de origem #}
+
+            <section
+                id="detail-comparison-section"
+                class="px-6 pb-6"
+                hidden
+            >
+
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-slate-800">
+                        Comparação com a origem
+                    </h3>
+
+                    <span
+                        id="detail-origin-id"
+                        class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600"
+                    >
+                        —
+                    </span>
+                </div>
+
+                <div class="overflow-hidden rounded-lg border border-slate-200">
+                    <div class="grid grid-cols-[1fr_auto_auto] gap-3 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        <span>Indicador</span>
+                        <span>Origem</span>
+                        <span>Atual</span>
+                    </div>
+
+                    <div class="grid grid-cols-[1fr_auto_auto] gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-700">
+                        <span>Registros</span>
+                        <span id="detail-origin-records">—</span>
+                        <span id="detail-current-records">—</span>
+                    </div>
+
+                    <div class="grid grid-cols-[1fr_auto_auto] gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-700">
+                        <span>Tamanho</span>
+                        <span id="detail-origin-size">—</span>
+                        <span id="detail-current-size">—</span>
+                    </div>
+
+                    <div class="grid grid-cols-[1fr_auto] gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-700">
+                        <span>Diferença de registros</span>
+                        <strong id="detail-record-difference" class="font-semibold text-slate-800">—</strong>
+                    </div>
+
+                    <div class="grid grid-cols-[1fr_auto] gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-700">
+                        <span>Conteúdo</span>
+                        <strong id="detail-content-changed" class="status-badge status-neutral">—</strong>
+                    </div>
+
+                    <div class="border-t border-slate-100 px-4 py-3">
+                        <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                            SHA-256 da origem
+                        </span>
+                        <code
+                            id="detail-origin-sha"
+                            class="mt-1 block break-all font-mono text-[11px] text-slate-600"
+                        >—</code>
+                    </div>
+                </div>
+
+            </section>
+
+
+            {# Ações operacionais #}
+
+            <section
+                id="detail-actions-section"
+                class="px-6 pb-6"
+                hidden
+            >
+
+                <div class="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+                    <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div class="min-w-0">
+                            <h3 class="text-sm font-semibold text-slate-900">
+                                Ações da exportação
+                            </h3>
+                            <p
+                                id="detail-actions-help"
+                                class="mt-1 max-w-xl text-xs leading-relaxed text-slate-500"
+                            >
+                                —
+                            </p>
+                        </div>
+
+                        <div class="flex shrink-0 flex-wrap gap-2">
+                            <button
+                                id="detail-resend"
+                                type="button"
+                                class="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Reenviar arquivo
+                            </button>
+
+                            <button
+                                id="detail-reprocess"
+                                type="button"
+                                class="rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Reprocessar e reenviar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div
+                        id="detail-action-feedback"
+                        class="action-feedback"
+                        hidden
+                    ></div>
+                </div>
+
+            </section>
+
+
+            {# Erro #}
+
+            <section
+                id="detail-error-section"
+                class="px-6 pb-6"
+                hidden
+            >
+
+                <h3
+                    class="
+                        mb-3
+                        text-sm
+                        font-semibold
+                        text-red-700
+                    "
+                >
+                    Falha
+                </h3>
+
+
+                <div
+                    id="detail-error"
+                    class="
+                        rounded-lg
+                        bg-red-50
+                        p-4
+                        text-xs
+                        leading-relaxed
+                        text-red-700
+                    "
+                ></div>
+
+            </section>
+
+
+            {# Timeline #}
+
+            <section class="px-6 pb-7">
+
+                <h3
+                    class="
+                        mb-4
+                        text-sm
+                        font-semibold
+                        text-slate-800
+                    "
+                >
+                    Linha do tempo
+                </h3>
+
+
+                <div id="detail-timeline"></div>
+
+            </section>
+
+        </div>
+
+    </div>
+
+</dialog>
+
+
+{# ====================================================================
+   CONFIRMAÇÃO DE AÇÃO
+   ==================================================================== #}
+
+<dialog
+    id="action-confirm-dialog"
+    class="action-confirm-dialog overflow-hidden rounded-2xl border-0 bg-white p-0 shadow-2xl"
+>
+    <div class="p-6">
+        <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Confirmação
+        </span>
+
+        <h2
+            id="action-confirm-title"
+            class="mt-1 text-lg font-semibold text-slate-900"
+        >
+            Confirmar operação
+        </h2>
+
+        <p
+            id="action-confirm-message"
+            class="mt-3 text-sm leading-relaxed text-slate-500"
+        >
+            —
+        </p>
+
+        <div class="mt-6 flex justify-end gap-2">
+            <button
+                id="action-confirm-cancel"
+                type="button"
+                class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+                Cancelar
+            </button>
+
+            <button
+                id="action-confirm-submit"
+                type="button"
+                class="rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+                Confirmar
+            </button>
+        </div>
+    </div>
+</dialog>
+
+{% endblock %}

@@ -1,0 +1,23 @@
+[Unit]
+Description=NielsenIQ - Exportacao diaria de vendas
+Documentation=internal
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+
+User=nielsen-export
+Group=nielsen-export
+
+WorkingDirectory=/opt/nielsen-export
+
+ExecStart=/usr/bin/php /opt/nielsen-export/bin/export-sales-daily.php
+
+TimeoutStartSec=1h
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
