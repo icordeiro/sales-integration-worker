@@ -1,4 +1,4 @@
-# NielsenIQ Sales Export Worker
+# Sales Integration Worker (SIW)
 
 Worker e painel web em PHP para exportar vendas de um ERP PostgreSQL para arquivo TXT delimitado por `|`, manter histórico/auditoria local em SQLite e realizar o envio por SFTP de forma controlada.
 
