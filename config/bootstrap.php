@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Shared\Application\Demo\DemoMode;
 use App\Shared\Infrastructure\Database\Config\ClientDatabaseConfig;
 use App\Shared\Infrastructure\Database\Config\PortalSqliteConfig;
 use App\Shared\Infrastructure\Database\PostgreSqlConnection;
@@ -46,7 +47,17 @@ date_default_timezone_set(
     $_ENV['APP_TIMEZONE']
 );
 
+$demoEnabled = filter_var(
+    $_ENV['APP_DEMO'] ?? 'false',
+    FILTER_VALIDATE_BOOLEAN
+) === true;
+
+if (!isset($_ENV['DEMO_DB_PATH']) || trim((string) $_ENV['DEMO_DB_PATH']) === '') {
+    $_ENV['DEMO_DB_PATH'] = 'storage/database/siw-demo.sqlite';
+}
+
 $environment = Environment::fromGlobals();
+$demoMode = new DemoMode($demoEnabled);
 
 /*
 |--------------------------------------------------------------------------
@@ -73,7 +84,10 @@ $clientDatabase =
 $portalDatabaseConfig =
     PortalSqliteConfig::fromEnvironment(
         environment: $environment,
-        projectRoot: $rootPath
+        projectRoot: $rootPath,
+        pathVariable: $demoMode->enabled
+            ? 'DEMO_DB_PATH'
+            : 'PORTAL_DB_PATH'
     );
 
 $portalDatabase =
@@ -84,6 +98,9 @@ $portalDatabase =
 return [
     'environment' =>
         $environment,
+
+    'demo_mode' =>
+        $demoMode,
 
     'client_database_config' =>
         $clientDatabaseConfig,

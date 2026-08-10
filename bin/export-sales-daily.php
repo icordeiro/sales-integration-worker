@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Exportacao\Vendas\Application\DTO\PeriodoExportacao;
 use App\Modules\Exportacao\Vendas\Application\Services\ProcessarExportacaoVendasService;
 use App\Modules\Exportacao\Vendas\Domain\Exception\ExportacaoNormalJaExistenteException;
+use App\Shared\Application\Logging\Contracts\Logger;
 use App\Shared\Infrastructure\Environment\Environment;
 use App\Shared\Infrastructure\Lock\FileProcessLock;
 
@@ -15,6 +16,20 @@ function main(): int
     $services = require $projectRoot
         . '/config/sftp-services.php';
 
+    if ($services['demo_mode']->enabled) {
+        fwrite(
+            STDERR,
+            PHP_EOL
+            . 'A exportação real está bloqueada enquanto APP_DEMO=true.'
+            . PHP_EOL
+            . 'Desative o modo demonstração para executar export:daily.'
+            . PHP_EOL
+            . PHP_EOL
+        );
+
+        return 2;
+    }
+
     /** @var Environment $environment */
     $environment =
         $services['environment'];
@@ -22,6 +37,10 @@ function main(): int
     /** @var ProcessarExportacaoVendasService $service */
     $service =
         $services['processar_exportacao_vendas_service'];
+
+    /** @var Logger $logger */
+    $logger =
+        $services['logger'];
 
     /*
     |--------------------------------------------------------------------------
@@ -55,6 +74,16 @@ function main(): int
             pollIntervalMilliseconds: 500
         );
     } catch (Throwable $exception) {
+        $logger->error(
+            'worker.lock_failed',
+            'Não foi possível inicializar o lock da rotina diária.',
+            [
+                'operation_type' => 'NORMAL',
+                'exception_class' => $exception::class,
+                'error_message' => $exception->getMessage(),
+            ]
+        );
+
         fwrite(
             STDERR,
             PHP_EOL
@@ -70,6 +99,15 @@ function main(): int
     }
 
     if (!$lockAcquired) {
+        $logger->warning(
+            'worker.lock_timeout',
+            'A rotina diária excedeu o tempo de espera pelo lock.',
+            [
+                'operation_type' => 'NORMAL',
+                'wait_timeout_seconds' => 900,
+            ]
+        );
+
         echo PHP_EOL;
         echo 'Exportação diária NielsenIQ'
             . PHP_EOL;
@@ -124,6 +162,16 @@ function main(): int
             $movementDate
         );
 
+        $logger->info(
+            'worker.daily_started',
+            'Rotina diária D-1 iniciada.',
+            [
+                'movement_date' => $periodo->dataReferencia(),
+                'operation_type' => 'NORMAL',
+                'pid' => getmypid(),
+            ]
+        );
+
         echo PHP_EOL;
         echo 'Exportação diária NielsenIQ'
             . PHP_EOL;
@@ -153,6 +201,20 @@ function main(): int
         try {
             $resultado = $service->execute(
                 $periodo
+            );
+
+            $logger->info(
+                'worker.daily_completed',
+                'Rotina diária concluída com sucesso.',
+                [
+                    'execution_id' => $resultado->execucaoId,
+                    'movement_date' => $periodo->dataReferencia(),
+                    'operation_type' => 'NORMAL',
+                    'file_name' => $resultado->arquivo->nome,
+                    'record_count' => $resultado->arquivo->quantidadeRegistros,
+                    'size_bytes' => $resultado->arquivo->tamanhoBytes,
+                    'duration_ms' => (int) round($resultado->duracaoSegundos * 1000),
+                ]
             );
 
             echo 'Exportação concluída com sucesso.'
@@ -231,6 +293,15 @@ function main(): int
         } catch (
             ExportacaoNormalJaExistenteException $exception
         ) {
+            $logger->info(
+                'worker.daily_noop',
+                'Rotina diária encerrada sem nova exportação porque o movimento já foi processado.',
+                [
+                    'movement_date' => $periodo->dataReferencia(),
+                    'operation_type' => 'NORMAL',
+                ]
+            );
+
             /*
              * Movimento já processado não representa
              * falha da rotina automática.
@@ -258,6 +329,17 @@ function main(): int
 
             return 0;
         } catch (Throwable $exception) {
+            $logger->error(
+                'worker.daily_failed',
+                'A rotina diária terminou com falha.',
+                [
+                    'movement_date' => $periodo->dataReferencia(),
+                    'operation_type' => 'NORMAL',
+                    'exception_class' => $exception::class,
+                    'error_message' => $exception->getMessage(),
+                ]
+            );
+
             fwrite(
                 STDERR,
                 PHP_EOL

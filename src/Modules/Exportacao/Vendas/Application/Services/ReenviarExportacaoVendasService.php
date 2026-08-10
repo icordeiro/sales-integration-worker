@@ -10,98 +10,69 @@ use App\Modules\Exportacao\Vendas\Application\DTO\ResultadoReenvioVendas;
 use App\Modules\Exportacao\Vendas\Domain\Enum\StatusExportacao;
 use App\Modules\Exportacao\Vendas\Domain\Enum\TipoExecucao;
 use App\Modules\Exportacao\Vendas\Domain\Exception\ReenvioExportacaoException;
+use App\Shared\Application\Logging\Contracts\Logger;
+use App\Shared\Application\Logging\NullLogger;
 use Throwable;
 
 final readonly class ReenviarExportacaoVendasService
 {
     public function __construct(
         private ExportacaoExecucaoRepository $execucoes,
-        private EnviarArquivoVendasService $enviarArquivo
+        private EnviarArquivoVendasService $enviarArquivo,
+        private Logger $logger = new NullLogger()
     ) {
     }
 
-    public function execute(
-        int $execucaoOrigemId
-    ): ResultadoReenvioVendas {
+    public function execute(int $execucaoOrigemId): ResultadoReenvioVendas
+    {
         $startedAt = microtime(true);
 
-        /*
-         * 1. Recupera execução original.
-         */
-        $origem = $this->execucoes->buscarPorId(
-            $execucaoOrigemId
-        );
+        $this->logger->info('resend.requested', 'Reenvio solicitado.', [
+            'origin_execution_id' => $execucaoOrigemId,
+            'operation_type' => TipoExecucao::REENVIO->value,
+        ]);
 
-        if ($origem === null) {
-            throw ReenvioExportacaoException::execucaoNaoEncontrada(
-                $execucaoOrigemId
-            );
+        try {
+            $origem = $this->execucoes->buscarPorId($execucaoOrigemId);
+
+            if ($origem === null) {
+                throw ReenvioExportacaoException::execucaoNaoEncontrada($execucaoOrigemId);
+            }
+            if ($origem->status !== StatusExportacao::CONCLUIDO) {
+                throw ReenvioExportacaoException::execucaoNaoConcluida($execucaoOrigemId);
+            }
+            if (
+                $origem->arquivoNome === null
+                || $origem->quantidadeRegistros === null
+                || $origem->tamanhoBytes === null
+                || $origem->sha256 === null
+                || $origem->caminhoLocal === null
+            ) {
+                throw ReenvioExportacaoException::metadadosIncompletos($execucaoOrigemId);
+            }
+            if (!is_file($origem->caminhoLocal)) {
+                throw ReenvioExportacaoException::arquivoIndisponivel($execucaoOrigemId);
+            }
+
+            $currentSize = filesize($origem->caminhoLocal);
+            if ($currentSize === false || $currentSize !== $origem->tamanhoBytes) {
+                throw ReenvioExportacaoException::tamanhoDivergente();
+            }
+
+            $currentHash = hash_file('sha256', $origem->caminhoLocal);
+            if ($currentHash === false || !hash_equals($origem->sha256, $currentHash)) {
+                throw ReenvioExportacaoException::hashDivergente();
+            }
+        } catch (Throwable $exception) {
+            $this->logger->warning('resend.rejected', 'Reenvio recusado antes da criação de uma nova execução.', [
+                'origin_execution_id' => $execucaoOrigemId,
+                'operation_type' => TipoExecucao::REENVIO->value,
+                'exception_class' => $exception::class,
+                'error_message' => $exception->getMessage(),
+            ]);
+            throw $exception;
         }
 
-        if (
-            $origem->status !== StatusExportacao::CONCLUIDO
-        ) {
-            throw ReenvioExportacaoException::execucaoNaoConcluida(
-                $execucaoOrigemId
-            );
-        }
-
-        if (
-            $origem->arquivoNome === null
-            || $origem->quantidadeRegistros === null
-            || $origem->tamanhoBytes === null
-            || $origem->sha256 === null
-            || $origem->caminhoLocal === null
-        ) {
-            throw ReenvioExportacaoException::metadadosIncompletos(
-                $execucaoOrigemId
-            );
-        }
-
-        /*
-         * 2. Confere arquivo físico.
-         */
-        if (!is_file($origem->caminhoLocal)) {
-            throw ReenvioExportacaoException::arquivoIndisponivel(
-                $execucaoOrigemId
-            );
-        }
-
-        /*
-         * 3. Confere tamanho.
-         */
-        $currentSize = filesize(
-            $origem->caminhoLocal
-        );
-
-        if (
-            $currentSize === false
-            || $currentSize !== $origem->tamanhoBytes
-        ) {
-            throw ReenvioExportacaoException::tamanhoDivergente();
-        }
-
-        /*
-         * 4. Confere SHA-256.
-         */
-        $currentHash = hash_file(
-            'sha256',
-            $origem->caminhoLocal
-        );
-
-        if (
-            $currentHash === false
-            || !hash_equals(
-                $origem->sha256,
-                $currentHash
-            )
-        ) {
-            throw ReenvioExportacaoException::hashDivergente();
-        }
-
-        /*
-         * 5. Reconstrói o Value Object do arquivo.
-         */
         $arquivo = new ArquivoVendaGerado(
             nome: $origem->arquivoNome,
             caminho: $origem->caminhoLocal,
@@ -111,59 +82,47 @@ final readonly class ReenviarExportacaoVendasService
             sha256: $origem->sha256
         );
 
-        /*
-         * Só criamos a nova execução depois
-         * de validar completamente a origem.
-         */
         $execucaoId = $this->execucoes->iniciar(
             dataMovimento: $origem->dataMovimento,
             tipoExecucao: TipoExecucao::REENVIO,
             execucaoOrigemId: $origem->id
         );
 
+        $baseContext = [
+            'execution_id' => $execucaoId,
+            'origin_execution_id' => $origem->id,
+            'movement_date' => $origem->dataMovimento,
+            'operation_type' => TipoExecucao::REENVIO->value,
+            'file_name' => $arquivo->nome,
+            'record_count' => $arquivo->quantidadeRegistros,
+            'size_bytes' => $arquivo->tamanhoBytes,
+        ];
+
+        $this->logger->info('resend.started', 'Execução de reenvio iniciada.', $baseContext);
+
         try {
             $this->execucoes->registrarStatus(
                 execucaoId: $execucaoId,
                 status: StatusExportacao::VALIDANDO,
-                mensagem: sprintf(
-                    'Arquivo original da execução #%d validado para reenvio.',
-                    $origem->id
-                )
+                mensagem: sprintf('Arquivo original da execução #%d validado para reenvio.', $origem->id)
             );
-
-            $this->execucoes->registrarArquivo(
-                execucaoId: $execucaoId,
-                arquivo: $arquivo
-            );
-
+            $this->execucoes->registrarArquivo(execucaoId: $execucaoId, arquivo: $arquivo);
             $this->execucoes->registrarStatus(
                 execucaoId: $execucaoId,
                 status: StatusExportacao::ENVIANDO,
-                mensagem: sprintf(
-                    'Reenviando %s para o SFTP.',
-                    $arquivo->nome
-                )
+                mensagem: sprintf('Reenviando %s para o SFTP.', $arquivo->nome)
             );
 
-            $envio = $this->enviarArquivo->execute(
-                $arquivo
-            );
+            $envio = $this->enviarArquivo->execute($arquivo);
 
             $this->execucoes->registrarStatus(
                 execucaoId: $execucaoId,
                 status: StatusExportacao::CONFIRMANDO_ENVIO,
-                mensagem: sprintf(
-                    'Reenvio confirmado em %s.',
-                    $envio->remotePath
-                )
+                mensagem: sprintf('Reenvio confirmado em %s.', $envio->remotePath)
             );
 
-            $duration = microtime(true)
-                - $startedAt;
-
-            $durationMilliseconds = (int) round(
-                $duration * 1000
-            );
+            $duration = microtime(true) - $startedAt;
+            $durationMilliseconds = (int) round($duration * 1000);
 
             $this->execucoes->concluir(
                 execucaoId: $execucaoId,
@@ -171,6 +130,13 @@ final readonly class ReenviarExportacaoVendasService
                 envio: $envio,
                 duracaoMilisegundos: $durationMilliseconds
             );
+
+            $this->logger->info('resend.completed', 'Reenvio concluído com sucesso.', [
+                ...$baseContext,
+                'remote_path' => $envio->remotePath,
+                'duration_ms' => $durationMilliseconds,
+                'final_status' => StatusExportacao::CONCLUIDO->value,
+            ]);
 
             return new ResultadoReenvioVendas(
                 execucaoId: $execucaoId,
@@ -180,10 +146,7 @@ final readonly class ReenviarExportacaoVendasService
                 duracaoSegundos: $duration
             );
         } catch (Throwable $exception) {
-            $durationMilliseconds = (int) round(
-                (microtime(true) - $startedAt)
-                * 1000
-            );
+            $durationMilliseconds = (int) round((microtime(true) - $startedAt) * 1000);
 
             try {
                 $this->execucoes->falhar(
@@ -193,6 +156,14 @@ final readonly class ReenviarExportacaoVendasService
                 );
             } catch (Throwable) {
             }
+
+            $this->logger->error('resend.failed', 'A execução de reenvio falhou.', [
+                ...$baseContext,
+                'duration_ms' => $durationMilliseconds,
+                'exception_class' => $exception::class,
+                'error_message' => $exception->getMessage(),
+                'final_status' => StatusExportacao::FALHOU->value,
+            ]);
 
             throw $exception;
         }

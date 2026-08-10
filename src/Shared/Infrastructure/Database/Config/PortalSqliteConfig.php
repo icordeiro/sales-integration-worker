@@ -21,16 +21,21 @@ final readonly class PortalSqliteConfig
 
     public static function fromEnvironment(
         Environment $environment,
+        string $projectRoot,
+        string $pathVariable = 'PORTAL_DB_PATH'
+    ): self {
+        return self::fromConfiguredPath(
+            configuredPath: $environment->string($pathVariable),
+            projectRoot: $projectRoot
+        );
+    }
+
+    public static function fromConfiguredPath(
+        string $configuredPath,
         string $projectRoot
     ): self {
-        $configuredPath = trim(
-            $environment->string(
-                'PORTAL_DB_PATH'
-            )
-        );
-
         $databasePath = self::resolvePath(
-            configuredPath: $configuredPath,
+            configuredPath: trim($configuredPath),
             projectRoot: $projectRoot
         );
 

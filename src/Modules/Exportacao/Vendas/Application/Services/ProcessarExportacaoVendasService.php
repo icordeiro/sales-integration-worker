@@ -11,6 +11,8 @@ use App\Modules\Exportacao\Vendas\Application\DTO\ResultadoExportacaoVendas;
 use App\Modules\Exportacao\Vendas\Domain\Enum\StatusExportacao;
 use App\Modules\Exportacao\Vendas\Domain\Enum\TipoExecucao;
 use App\Modules\Exportacao\Vendas\Domain\Exception\ExportacaoNormalJaExistenteException;
+use App\Shared\Application\Logging\Contracts\Logger;
+use App\Shared\Application\Logging\NullLogger;
 use Throwable;
 
 final readonly class ProcessarExportacaoVendasService
@@ -19,7 +21,8 @@ final readonly class ProcessarExportacaoVendasService
         private ConsultarVendasService $consultarVendas,
         private VendaArquivoGenerator $arquivoGenerator,
         private EnviarArquivoVendasService $enviarArquivo,
-        private ExportacaoExecucaoRepository $execucoes
+        private ExportacaoExecucaoRepository $execucoes,
+        private Logger $logger = new NullLogger()
     ) {
     }
 
@@ -31,50 +34,46 @@ final readonly class ProcessarExportacaoVendasService
     ): ResultadoExportacaoVendas {
         $startedAt = microtime(true);
 
-        /*
-         * Idempotência da execução NORMAL.
-         */
         if (
             $tipoExecucao === TipoExecucao::NORMAL
-            && $this->execucoes->existeExecucaoNormalBloqueante(
-                $periodo->dataReferencia()
-            )
+            && $this->execucoes->existeExecucaoNormalBloqueante($periodo->dataReferencia())
         ) {
-            throw ExportacaoNormalJaExistenteException::paraMovimento(
-                $periodo->dataReferencia()
+            $this->logger->info(
+                'export.skipped_existing',
+                'Movimento já possui execução NORMAL bloqueante.',
+                [
+                    'movement_date' => $periodo->dataReferencia(),
+                    'operation_type' => $tipoExecucao->value,
+                ]
             );
+
+            throw ExportacaoNormalJaExistenteException::paraMovimento($periodo->dataReferencia());
         }
 
-        /*
-         * A execução precisa existir antes da geração,
-         * pois seu ID também identifica a pasta local.
-         */
         $execucaoId = $this->execucoes->iniciar(
             dataMovimento: $periodo->dataReferencia(),
             tipoExecucao: $tipoExecucao,
             execucaoOrigemId: $execucaoOrigemId
         );
 
+        $baseContext = [
+            'execution_id' => $execucaoId,
+            'movement_date' => $periodo->dataReferencia(),
+            'operation_type' => $tipoExecucao->value,
+            'origin_execution_id' => $execucaoOrigemId,
+        ];
+
+        $this->logger->info('export.started', 'Execução de exportação iniciada.', $baseContext);
+
         try {
-            /*
-             * 1. Consulta
-             */
             $this->execucoes->registrarStatus(
                 execucaoId: $execucaoId,
                 status: StatusExportacao::CONSULTANDO,
-                mensagem: sprintf(
-                    'Consultando vendas do movimento %s.',
-                    $periodo->dataReferencia()
-                )
+                mensagem: sprintf('Consultando vendas do movimento %s.', $periodo->dataReferencia())
             );
 
-            $vendas = $this->consultarVendas->execute(
-                $periodo
-            );
+            $vendas = $this->consultarVendas->execute($periodo);
 
-            /*
-             * 2. Geração do arquivo
-             */
             $this->execucoes->registrarStatus(
                 execucaoId: $execucaoId,
                 status: StatusExportacao::GERANDO_ARQUIVO,
@@ -87,36 +86,15 @@ final readonly class ProcessarExportacaoVendasService
                 execucaoId: $execucaoId
             );
 
-            /*
-             * 3. Validação
-             */
             $conteudoAlterado = null;
+            $mensagemValidacao = sprintf('Arquivo %s gerado e validado.', $arquivo->nome);
 
-            $mensagemValidacao = sprintf(
-                'Arquivo %s gerado e validado.',
-                $arquivo->nome
-            );
+            if ($tipoExecucao === TipoExecucao::REPROCESSAMENTO && $sha256Origem !== null) {
+                $conteudoAlterado = !hash_equals($sha256Origem, $arquivo->sha256);
 
-            if (
-                $tipoExecucao === TipoExecucao::REPROCESSAMENTO
-                && $sha256Origem !== null
-            ) {
-                $conteudoAlterado = !hash_equals(
-                    $sha256Origem,
-                    $arquivo->sha256
-                );
-
-                if ($conteudoAlterado) {
-                    $mensagemValidacao = sprintf(
-                        'Arquivo %s reprocessado. O conteúdo diverge da execução de origem.',
-                        $arquivo->nome
-                    );
-                } else {
-                    $mensagemValidacao = sprintf(
-                        'Arquivo %s reprocessado. O conteúdo é idêntico à execução de origem.',
-                        $arquivo->nome
-                    );
-                }
+                $mensagemValidacao = $conteudoAlterado
+                    ? sprintf('Arquivo %s reprocessado. O conteúdo diverge da execução de origem.', $arquivo->nome)
+                    : sprintf('Arquivo %s reprocessado. O conteúdo é idêntico à execução de origem.', $arquivo->nome);
             }
 
             $this->execucoes->registrarStatus(
@@ -125,65 +103,57 @@ final readonly class ProcessarExportacaoVendasService
                 mensagem: $mensagemValidacao
             );
 
-            /*
-             * Os metadados são registrados ANTES do SFTP.
-             *
-             * Se o envio falhar, ainda sabemos exatamente
-             * qual arquivo foi produzido.
-             */
-            $this->execucoes->registrarArquivo(
-                execucaoId: $execucaoId,
-                arquivo: $arquivo
+            $this->execucoes->registrarArquivo(execucaoId: $execucaoId, arquivo: $arquivo);
+
+            $this->logger->info(
+                'export.file_ready',
+                'Arquivo da exportação gerado e validado.',
+                [
+                    ...$baseContext,
+                    'file_name' => $arquivo->nome,
+                    'record_count' => $arquivo->quantidadeRegistros,
+                    'size_bytes' => $arquivo->tamanhoBytes,
+                    'content_changed' => $conteudoAlterado,
+                ]
             );
 
-            /*
-             * 4. Envio SFTP
-             */
             $this->execucoes->registrarStatus(
                 execucaoId: $execucaoId,
                 status: StatusExportacao::ENVIANDO,
-                mensagem: sprintf(
-                    'Enviando %s para o SFTP.',
-                    $arquivo->nome
-                )
+                mensagem: sprintf('Enviando %s para o SFTP.', $arquivo->nome)
             );
 
-            $envio = $this->enviarArquivo->execute(
-                $arquivo
-            );
+            $envio = $this->enviarArquivo->execute($arquivo);
 
-            /*
-             * O RemoteFileStorage já:
-             *
-             * - envia .part;
-             * - compara tamanho;
-             * - renomeia;
-             * - confirma o arquivo final.
-             */
             $this->execucoes->registrarStatus(
                 execucaoId: $execucaoId,
                 status: StatusExportacao::CONFIRMANDO_ENVIO,
-                mensagem: sprintf(
-                    'Envio confirmado em %s.',
-                    $envio->remotePath
-                )
+                mensagem: sprintf('Envio confirmado em %s.', $envio->remotePath)
             );
 
-            /*
-             * 5. Conclusão
-             */
-            $duration = microtime(true)
-                - $startedAt;
-
-            $durationMilliseconds = (int) round(
-                $duration * 1000
-            );
+            $duration = microtime(true) - $startedAt;
+            $durationMilliseconds = (int) round($duration * 1000);
 
             $this->execucoes->concluir(
                 execucaoId: $execucaoId,
                 arquivo: $arquivo,
                 envio: $envio,
                 duracaoMilisegundos: $durationMilliseconds
+            );
+
+            $this->logger->info(
+                'export.completed',
+                'Exportação concluída com sucesso.',
+                [
+                    ...$baseContext,
+                    'file_name' => $arquivo->nome,
+                    'record_count' => $arquivo->quantidadeRegistros,
+                    'size_bytes' => $arquivo->tamanhoBytes,
+                    'remote_path' => $envio->remotePath,
+                    'duration_ms' => $durationMilliseconds,
+                    'content_changed' => $conteudoAlterado,
+                    'final_status' => StatusExportacao::CONCLUIDO->value,
+                ]
             );
 
             return new ResultadoExportacaoVendas(
@@ -194,10 +164,7 @@ final readonly class ProcessarExportacaoVendasService
                 conteudoAlterado: $conteudoAlterado
             );
         } catch (Throwable $exception) {
-            $durationMilliseconds = (int) round(
-                (microtime(true) - $startedAt)
-                * 1000
-            );
+            $durationMilliseconds = (int) round((microtime(true) - $startedAt) * 1000);
 
             try {
                 $this->execucoes->falhar(
@@ -206,11 +173,19 @@ final readonly class ProcessarExportacaoVendasService
                     duracaoMilisegundos: $durationMilliseconds
                 );
             } catch (Throwable) {
-                /*
-                 * A falha ao registrar histórico nunca
-                 * deve esconder a exceção original.
-                 */
             }
+
+            $this->logger->error(
+                'export.failed',
+                'A execução de exportação falhou.',
+                [
+                    ...$baseContext,
+                    'duration_ms' => $durationMilliseconds,
+                    'exception_class' => $exception::class,
+                    'error_message' => $exception->getMessage(),
+                    'final_status' => StatusExportacao::FALHOU->value,
+                ]
+            );
 
             throw $exception;
         }

@@ -9,12 +9,14 @@ use App\Infrastructure\View\Twig\TwigRenderer;
 use App\Modules\Exportacao\Vendas\Application\Contracts\ExportacaoDashboardQuery;
 use App\Modules\Exportacao\Vendas\Application\Services\ReenviarExportacaoVendasService;
 use App\Modules\Exportacao\Vendas\Application\Services\ReprocessarExportacaoVendasService;
+use App\Shared\Application\Demo\DemoMode;
+use App\Shared\Application\Health\Services\HealthCheckService;
 use App\Shared\Infrastructure\Environment\Environment;
 use App\Shared\Infrastructure\Lock\FileProcessLock;
 
 $services =
     require __DIR__
-    . '/services.php';
+    . '/health.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +37,10 @@ $container =
 $environment =
     $services['environment'];
 
+/** @var DemoMode $demoMode */
+$demoMode =
+    $services['demo_mode'];
+
 /** @var ExportacaoDashboardQuery $dashboardQuery */
 $dashboardQuery =
     $services['exportacao_dashboard_query'];
@@ -45,8 +51,32 @@ $container->instance(
 );
 
 $container->instance(
+    DemoMode::class,
+    $demoMode
+);
+
+$container->instance(
     ExportacaoDashboardQuery::class,
     $dashboardQuery
+);
+
+/*
+|--------------------------------------------------------------------------
+| Health check
+|--------------------------------------------------------------------------
+|
+| A composição dos probes fica em config/health.php para ser compartilhada
+| entre HTTP e CLI. O endpoint web permanece leve e não abre sessão SFTP.
+|
+*/
+
+/** @var HealthCheckService $healthCheckService */
+$healthCheckService =
+    $services['health_check_service'];
+
+$container->instance(
+    HealthCheckService::class,
+    $healthCheckService
 );
 
 /*

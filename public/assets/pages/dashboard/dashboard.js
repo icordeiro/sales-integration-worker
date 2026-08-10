@@ -30,7 +30,22 @@
             || 15000
         );
 
+
+    const healthRefreshInterval =
+        Number(
+            app.dataset.healthRefreshInterval
+            || 60000
+        );
+
+
+    const demoMode =
+        app.dataset.demoMode
+        === 'true';
+
     const api = {
+        health:
+            app.dataset.apiHealth,
+
         resumo:
             app.dataset.apiResumo,
 
@@ -114,6 +129,21 @@
         lastDashboardUpdate:
             document.getElementById(
                 'last-dashboard-update'
+            ),
+
+        healthOverallBadge:
+            document.getElementById(
+                'health-overall-badge'
+            ),
+
+        healthCheckedAt:
+            document.getElementById(
+                'health-checked-at'
+            ),
+
+        healthLastExecution:
+            document.getElementById(
+                'health-last-execution'
             ),
 
         exportExcel:
@@ -1114,6 +1144,227 @@
 
     /*
     |--------------------------------------------------------------------------
+    | Saúde da integração
+    |--------------------------------------------------------------------------
+    */
+
+    const healthKeys = [
+        'php',
+        'sqlite',
+        'postgresql',
+        'sftp',
+        'storage',
+        'lock',
+    ];
+
+
+    function healthDotClass(status) {
+
+        if (status === 'ok') {
+            return 'size-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/10';
+        }
+
+        if (status === 'warning') {
+            return 'size-2.5 shrink-0 rounded-full bg-amber-500 ring-4 ring-amber-500/10';
+        }
+
+        if (status === 'error') {
+            return 'size-2.5 shrink-0 rounded-full bg-red-500 ring-4 ring-red-500/10';
+        }
+
+        return 'size-2.5 shrink-0 rounded-full bg-slate-300';
+    }
+
+
+    function configureHealthOverall(status) {
+
+        const badge =
+            elements.healthOverallBadge;
+
+        if (!badge) {
+            return;
+        }
+
+        const config = {
+            healthy: {
+                label: 'Saudável',
+                className: 'status-badge status-success',
+            },
+            degraded: {
+                label: 'Atenção',
+                className: 'status-badge status-warning',
+            },
+            unhealthy: {
+                label: 'Indisponível',
+                className: 'status-badge status-danger',
+            },
+        };
+
+        const selected =
+            config[status]
+            || {
+                label: 'Desconhecido',
+                className: 'status-badge status-neutral',
+            };
+
+        badge.className =
+            selected.className;
+
+        badge.textContent =
+            selected.label;
+    }
+
+
+    function renderHealthCheck(key, check) {
+
+        const dot =
+            document.getElementById(
+                `health-${key}-dot`
+            );
+
+        const text =
+            document.getElementById(
+                `health-${key}-text`
+            );
+
+        if (!dot || !text) {
+            return;
+        }
+
+        const status =
+            check?.status
+            || 'unknown';
+
+        const message =
+            check?.message
+            || 'Sem informação';
+
+        dot.className =
+            healthDotClass(status);
+
+        text.textContent =
+            message;
+
+        text.title =
+            message;
+    }
+
+
+    function renderHealth(data) {
+
+        configureHealthOverall(
+            data.status
+        );
+
+        const checks =
+            data.checks
+            || {};
+
+        healthKeys.forEach(
+            (key) => {
+                renderHealthCheck(
+                    key,
+                    checks[key]
+                );
+            }
+        );
+
+        const exportacao =
+            checks.exportacao?.details
+            || {};
+
+        if (elements.healthLastExecution) {
+
+            if (exportacao.last_execution_id) {
+                elements.healthLastExecution.textContent =
+                    `Fluxo de exportação: #${exportacao.last_execution_id} · ${labelStatus(exportacao.last_status)} · movimento ${formatMovementDate(exportacao.last_movement)}`;
+            } else {
+                elements.healthLastExecution.textContent =
+                    'Fluxo de exportação: nenhuma execução registrada';
+            }
+        }
+
+        if (elements.healthCheckedAt) {
+            elements.healthCheckedAt.textContent =
+                `Verificado em ${formatDateTime(data.checked_at)}`;
+        }
+    }
+
+
+    function renderHealthUnavailable() {
+
+        configureHealthOverall(
+            'unhealthy'
+        );
+
+        healthKeys.forEach(
+            (key) => {
+                renderHealthCheck(
+                    key,
+                    {
+                        status: 'error',
+                        message: 'Verificação indisponível.',
+                    }
+                );
+            }
+        );
+
+        if (elements.healthLastExecution) {
+            elements.healthLastExecution.textContent =
+                'Fluxo de exportação: health check indisponível';
+        }
+
+        if (elements.healthCheckedAt) {
+            elements.healthCheckedAt.textContent =
+                'Não foi possível atualizar';
+        }
+    }
+
+
+    async function loadHealth() {
+
+        const data =
+            await request(
+                api.health
+            );
+
+        renderHealth(
+            data
+        );
+    }
+
+
+    let healthRefreshing =
+        false;
+
+
+    async function refreshHealth() {
+
+        if (healthRefreshing) {
+            return;
+        }
+
+        healthRefreshing =
+            true;
+
+        try {
+            await loadHealth();
+        } catch (error) {
+            console.error(
+                'Falha ao atualizar health check:',
+                error
+            );
+
+            renderHealthUnavailable();
+        } finally {
+            healthRefreshing =
+                false;
+        }
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
     | Resumo
     |--------------------------------------------------------------------------
     */
@@ -1814,6 +2065,15 @@
         }
 
 
+        if (demoMode) {
+            elements.detailResend.disabled = true;
+            elements.detailReprocess.disabled = true;
+            elements.detailActionsHelp.textContent =
+                'Modo demonstração: reenvio e reprocessamento reais estão bloqueados. Os dados exibidos são totalmente fictícios.';
+            return;
+        }
+
+
         elements
             .detailResend
             .disabled =
@@ -1904,6 +2164,10 @@
 
 
     function openActionConfirmation(type) {
+
+        if (demoMode) {
+            return;
+        }
 
         if (
             currentDetailId === null
@@ -2581,6 +2845,7 @@
     */
 
     refreshDashboard();
+    refreshHealth();
 
 
     window.setInterval(
@@ -2589,6 +2854,16 @@
         Math.max(
             refreshInterval,
             5000
+        )
+    );
+
+
+    window.setInterval(
+        refreshHealth,
+
+        Math.max(
+            healthRefreshInterval,
+            30000
         )
     );
 
