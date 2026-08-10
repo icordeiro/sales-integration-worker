@@ -17,9 +17,11 @@ $LogDirectory = Join-Path `
     $ProjectRoot `
     "storage\logs"
 
+$LogMonth = (Get-Date).ToString("yyyy-MM")
+
 $LogFile = Join-Path `
     $LogDirectory `
-    "export-sales-daily.log"
+    ("scheduler-{0}.log" -f $LogMonth)
 
 if (-not (Test-Path $PhpPath)) {
     Write-Error "PHP não encontrado em: $PhpPath"

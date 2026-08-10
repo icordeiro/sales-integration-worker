@@ -1,0 +1,37 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use App\Shared\Application\Console\ConsoleApplication;
+
+$projectRoot = dirname(__DIR__);
+
+$autoload = $projectRoot
+    . DIRECTORY_SEPARATOR
+    . 'vendor'
+    . DIRECTORY_SEPARATOR
+    . 'autoload.php';
+
+if (!is_file($autoload)) {
+    fwrite(
+        STDERR,
+        'Dependências não instaladas. Execute "composer install" antes de usar o CLI.'
+        . PHP_EOL
+    );
+
+    exit(1);
+}
+
+require_once $autoload;
+
+/** @var ConsoleApplication $application */
+$application = require $projectRoot
+    . DIRECTORY_SEPARATOR
+    . 'config'
+    . DIRECTORY_SEPARATOR
+    . 'console.php';
+
+exit(
+    $application->run($argv)
+);

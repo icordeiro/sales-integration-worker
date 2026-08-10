@@ -9,6 +9,7 @@ use App\Modules\Exportacao\Vendas\Application\Services\EnviarArquivoVendasServic
 use App\Modules\Exportacao\Vendas\Application\Services\ProcessarExportacaoVendasService;
 use App\Modules\Exportacao\Vendas\Application\Services\ReenviarExportacaoVendasService;
 use App\Modules\Exportacao\Vendas\Application\Services\ReprocessarExportacaoVendasService;
+use App\Shared\Application\Logging\Contracts\Logger;
 use App\Shared\Infrastructure\Environment\Environment;
 use App\Shared\Infrastructure\Sftp\Config\SftpConfig;
 use App\Shared\Infrastructure\Sftp\PhpseclibRemoteFileStorage;
@@ -64,24 +65,31 @@ $arquivoGenerator =
 $execucoes =
     $services['exportacao_execucao_repository'];
 
+/** @var Logger $logger */
+$logger =
+    $services['logger'];
+
 $processarExportacaoVendasService =
     new ProcessarExportacaoVendasService(
         consultarVendas: $consultarVendasService,
         arquivoGenerator: $arquivoGenerator,
         enviarArquivo: $enviarArquivoVendasService,
-        execucoes: $execucoes
+        execucoes: $execucoes,
+        logger: $logger
     );
 
 $reenviarExportacaoVendasService =
     new ReenviarExportacaoVendasService(
         execucoes: $execucoes,
-        enviarArquivo: $enviarArquivoVendasService
+        enviarArquivo: $enviarArquivoVendasService,
+        logger: $logger
     );
 
 $reprocessarExportacaoVendasService =
     new ReprocessarExportacaoVendasService(
         execucoes: $execucoes,
-        processarExportacao: $processarExportacaoVendasService
+        processarExportacao: $processarExportacaoVendasService,
+        logger: $logger
     );
 
 return [

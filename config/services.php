@@ -10,7 +10,11 @@ use App\Modules\Exportacao\Vendas\Infrastructure\Database\VrMasterVendaExportaca
 use App\Modules\Exportacao\Vendas\Infrastructure\File\VendaTxtFormatter;
 use App\Modules\Exportacao\Vendas\Infrastructure\File\VendaTxtGenerator;
 use App\Shared\Infrastructure\Database\Contracts\DatabaseConnection;
+use App\Shared\Application\Logging\Contracts\Logger;
+use App\Shared\Application\Logging\Enum\LogLevel;
 use App\Shared\Infrastructure\Environment\Environment;
+use App\Shared\Infrastructure\Logging\MonthlyJsonFileLogger;
+use App\Shared\Infrastructure\Logging\SafeLogger;
 
 $services = require __DIR__
     . '/bootstrap.php';
@@ -26,6 +30,41 @@ $portalDatabase =
 /** @var Environment $environment */
 $environment =
     $services['environment'];
+
+/*
+|--------------------------------------------------------------------------
+| Logging estruturado
+|--------------------------------------------------------------------------
+|
+| O arquivo é rotacionado naturalmente por mês:
+| storage/logs/siw-YYYY-MM.log
+|
+| LOG_LEVEL é opcional. Quando ausente, INFO é utilizado.
+|
+*/
+
+$logLevel = LogLevel::fromString(
+    $environment->optionalString(
+        'LOG_LEVEL',
+        LogLevel::INFO->value
+    ) ?? LogLevel::INFO->value
+);
+
+/** @var Logger $logger */
+$logger = new SafeLogger(
+    new MonthlyJsonFileLogger(
+        directory: dirname(__DIR__)
+            . DIRECTORY_SEPARATOR
+            . 'storage'
+            . DIRECTORY_SEPARATOR
+            . 'logs',
+        timezone: new DateTimeZone(
+            $environment->string('APP_TIMEZONE')
+        ),
+        minimumLevel: $logLevel,
+        channel: 'siw'
+    )
+);
 
 /*
 |--------------------------------------------------------------------------
@@ -109,6 +148,9 @@ $exportacaoDashboardQuery =
 
 return [
     ...$services,
+
+    'logger' =>
+        $logger,
 
     'venda_exportacao_gateway' =>
         $vendaExportacaoGateway,

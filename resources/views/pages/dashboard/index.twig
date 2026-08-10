@@ -5,6 +5,9 @@
 <main
     id="dashboard-app"
     data-refresh-interval="{{ REFRESH_INTERVAL }}"
+    data-health-refresh-interval="{{ HEALTH_REFRESH_INTERVAL }}"
+    data-demo-mode="{{ DEMO_MODE ? 'true' : 'false' }}"
+    data-api-health="/api/health"
     data-api-resumo="/api/dashboard/resumo"
     data-api-exportacoes="/api/exportacoes?limit=5000"
     data-api-detalhe="/api/exportacoes/{id}"
@@ -40,7 +43,7 @@
                     shadow-sm
                 "
             >
-                N
+                {{ DEMO_MODE ? 'S' : 'N' }}
             </div>
 
 
@@ -53,7 +56,7 @@
                         text-slate-900
                     "
                 >
-                    NielsenIQ
+                    {{ DEMO_MODE ? 'Sales Integration Worker' : 'NielsenIQ' }}
                 </h1>
 
                 <p
@@ -63,7 +66,7 @@
                         text-slate-500
                     "
                 >
-                    Monitor de exportações de vendas
+                    {{ DEMO_MODE ? 'Dashboard demonstrativo do SIW' : 'Monitor de exportações de vendas' }}
                 </p>
 
             </div>
@@ -96,6 +99,26 @@
         </div>
 
     </header>
+
+    {% if DEMO_MODE %}
+        <section
+            class="mx-4 mt-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 sm:mx-6 lg:mx-8"
+        >
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <strong class="text-sm font-semibold text-violet-900">
+                        Modo demonstração ativo
+                    </strong>
+                    <p class="mt-0.5 text-xs text-violet-700">
+                        O dashboard usa dados fictícios locais. Acesso ao ERP, conexão SFTP, reenvio e reprocessamento reais estão bloqueados.
+                    </p>
+                </div>
+                <span class="mt-2 inline-flex w-fit rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-violet-700 sm:mt-0">
+                    SIW Demo
+                </span>
+            </div>
+        </section>
+    {% endif %}
 
 
     {# ================================================================
@@ -400,6 +423,138 @@
                 </p>
 
             </article>
+
+        </section>
+
+
+        {# ============================================================
+           SAÚDE DA INTEGRAÇÃO
+           ============================================================ #}
+
+        <section
+            class="
+                mt-4
+                overflow-hidden
+                rounded-xl
+                border border-slate-200
+                bg-white
+                shadow-sm
+            "
+        >
+
+            <header
+                class="
+                    flex flex-col gap-3
+                    border-b border-slate-200
+                    px-5 py-4
+                    sm:flex-row
+                    sm:items-center
+                    sm:justify-between
+                "
+            >
+
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h2 class="text-sm font-semibold text-slate-900">
+                            Saúde da integração
+                        </h2>
+
+                        <span
+                            id="health-overall-badge"
+                            class="status-badge status-neutral"
+                        >
+                            Verificando...
+                        </span>
+                    </div>
+
+                    <p class="mt-1 text-xs text-slate-500">
+                        {% if DEMO_MODE %}
+                            Verificações do ambiente demonstrativo local. PostgreSQL e SFTP externos permanecem desativados.
+                        {% else %}
+                            Verificações leves de runtime, bancos, storage e worker.
+                            O SFTP é validado aqui apenas em nível de configuração.
+                        {% endif %}
+                    </p>
+                </div>
+
+                <span
+                    id="health-checked-at"
+                    class="text-[11px] text-slate-400"
+                >
+                    —
+                </span>
+
+            </header>
+
+            <div
+                class="
+                    grid
+                    grid-cols-1
+                    divide-y divide-slate-100
+                    sm:grid-cols-2
+                    sm:divide-y-0
+                    lg:grid-cols-3
+                    xl:grid-cols-6
+                "
+            >
+
+                {% set health_items = [
+                    ['php', 'PHP'],
+                    ['sqlite', 'SQLite'],
+                    ['postgresql', 'PostgreSQL'],
+                    ['sftp', 'SFTP (config.)'],
+                    ['storage', 'Storage'],
+                    ['lock', 'Worker']
+                ] %}
+
+                {% for item in health_items %}
+                    <div class="flex min-h-20 items-center gap-3 border-slate-100 px-5 py-4 xl:border-r xl:last:border-r-0">
+                        <span
+                            id="health-{{ item[0] }}-dot"
+                            class="size-2.5 shrink-0 rounded-full bg-slate-300"
+                        ></span>
+
+                        <div class="min-w-0">
+                            <span class="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                {{ item[1] }}
+                            </span>
+                            <strong
+                                id="health-{{ item[0] }}-text"
+                                class="mt-1 block truncate text-xs font-semibold text-slate-700"
+                                title="Verificando..."
+                            >
+                                Verificando...
+                            </strong>
+                        </div>
+                    </div>
+                {% endfor %}
+
+            </div>
+
+            <div
+                class="
+                    flex flex-col gap-1
+                    border-t border-slate-100
+                    bg-slate-50/60
+                    px-5 py-3
+                    text-[11px] text-slate-500
+                    sm:flex-row
+                    sm:items-center
+                    sm:justify-between
+                "
+            >
+                <span id="health-last-execution">
+                    Fluxo de exportação: verificando...
+                </span>
+
+                <span>
+                    {% if DEMO_MODE %}
+                        Modo demo: nenhuma conexão externa é realizada
+                    {% else %}
+                        Health check do PostgreSQL: consulta mínima a cada 60s
+                    {% endif %}
+                </span>
+            </div>
 
         </section>
 

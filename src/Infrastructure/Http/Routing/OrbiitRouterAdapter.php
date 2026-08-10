@@ -7,6 +7,7 @@ namespace App\Infrastructure\Http\Routing;
 use App\Core\Container;
 use App\Http\Controllers\Api\ExportacaoDashboardController;
 use App\Http\Controllers\Api\ExportacaoOperacaoController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\DashboardController;
 use Orbiit\Router\Router;
 
@@ -82,6 +83,10 @@ final class OrbiitRouterAdapter
 
         $this->router->loadController(
             'Api\\ExportacaoOperacaoController'
+        );
+
+        $this->router->loadController(
+            'Api\\HealthController'
         );
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Infrastructure\Http\Response\JsonResponse;
+use App\Shared\Application\Demo\DemoMode;
 use App\Modules\Exportacao\Vendas\Application\DTO\ResultadoExportacaoVendas;
 use App\Modules\Exportacao\Vendas\Application\DTO\ResultadoReenvioVendas;
 use App\Modules\Exportacao\Vendas\Application\Services\ReenviarExportacaoVendasService;
@@ -22,7 +23,8 @@ final readonly class ExportacaoOperacaoController
     public function __construct(
         private ReenviarExportacaoVendasService $reenviar,
         private ReprocessarExportacaoVendasService $reprocessar,
-        private FileProcessLock $processLock
+        private FileProcessLock $processLock,
+        private DemoMode $demoMode
     ) {
     }
 
@@ -37,6 +39,13 @@ final readonly class ExportacaoOperacaoController
             return JsonResponse::error(
                 message: 'Identificador da execução inválido.',
                 status: 400
+            );
+        }
+
+        if ($this->demoMode->enabled) {
+            return JsonResponse::error(
+                message: 'Operações externas estão desativadas no modo demonstração.',
+                status: 403
             );
         }
 
@@ -96,6 +105,13 @@ final readonly class ExportacaoOperacaoController
             return JsonResponse::error(
                 message: 'Identificador da execução inválido.',
                 status: 400
+            );
+        }
+
+        if ($this->demoMode->enabled) {
+            return JsonResponse::error(
+                message: 'Operações externas estão desativadas no modo demonstração.',
+                status: 403
             );
         }
 

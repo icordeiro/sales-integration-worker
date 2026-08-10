@@ -148,6 +148,53 @@ final class FileProcessLock
         return $this->acquired;
     }
 
+    /**
+     * Verifica se outro processo mantém o lock sem alterar
+     * o conteúdo/metadados do arquivo.
+     */
+    public function isLockedByAnotherProcess(): bool
+    {
+        if ($this->acquired) {
+            return false;
+        }
+
+        if (!is_file($this->lockFile)) {
+            return false;
+        }
+
+        $handle = fopen(
+            $this->lockFile,
+            'r+'
+        );
+
+        if ($handle === false) {
+            throw new RuntimeException(
+                sprintf(
+                    'Não foi possível abrir o arquivo de lock "%s" para verificação.',
+                    $this->lockFile
+                )
+            );
+        }
+
+        $acquired = flock(
+            $handle,
+            LOCK_EX | LOCK_NB
+        );
+
+        if ($acquired) {
+            flock(
+                $handle,
+                LOCK_UN
+            );
+        }
+
+        fclose(
+            $handle
+        );
+
+        return !$acquired;
+    }
+
     public function lockFile(): string
     {
         return $this->lockFile;
