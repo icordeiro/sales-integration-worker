@@ -89,6 +89,70 @@ final class VendaTxtGeneratorTest extends TestCase
         $generator->gerar($periodo, [], 7);
     }
 
+    public function testNaoApagaArquivoParcialLegadoDeOutraExecucao(): void
+    {
+        $generator = new VendaTxtGenerator($this->temporaryDirectory, new VendaTxtFormatter(), 'DEMO');
+        $periodo = PeriodoExportacao::doDia(new DateTimeImmutable('2026-08-06'));
+        $directory = $this->temporaryDirectory . '/2026/08/execucao-22';
+        mkdir($directory, 0770, true);
+        $legacyPartial = $directory . '/MV20260806_DEMO.txt.part';
+        file_put_contents($legacyPartial, 'NAO APAGAR');
+
+        $arquivo = $generator->gerar($periodo, [], 22);
+
+        self::assertFileExists($arquivo->caminho);
+        self::assertSame('NAO APAGAR', file_get_contents($legacyPartial));
+        self::assertSame([], glob($directory . '/*.part') === false
+            ? array_values(array_diff(glob($directory . '/*.part'), [$legacyPartial]))
+            : []);
+    }
+
+    public function testNaoSubstituiLinkSimbolicoNoDestinoFinal(): void
+    {
+        if (!function_exists('symlink')) {
+            self::markTestSkipped('Symlink indisponível.');
+        }
+
+        $generator = new VendaTxtGenerator($this->temporaryDirectory, new VendaTxtFormatter(), 'DEMO');
+        $periodo = PeriodoExportacao::doDia(new DateTimeImmutable('2026-08-06'));
+        $directory = $this->temporaryDirectory . '/2026/08/execucao-23';
+        mkdir($directory, 0770, true);
+        $target = $this->temporaryDirectory . '/outside.txt';
+        file_put_contents($target, 'INTACTO');
+        $final = $directory . '/MV20260806_DEMO.txt';
+
+        if (!@symlink($target, $final)) {
+            self::markTestSkipped('Sem permissão para criar symlink neste ambiente.');
+        }
+
+        try {
+            $generator->gerar($periodo, [], 23);
+            self::fail('Deveria rejeitar o destino ocupado por symlink.');
+        } catch (ArquivoVendaException) {
+            self::assertSame('INTACTO', file_get_contents($target));
+            self::assertTrue(is_link($final));
+        }
+    }
+
+    public function testRejeitaDiretorioDeExportacaoSimbolico(): void
+    {
+        if (!function_exists('symlink')) {
+            self::markTestSkipped('Symlink indisponível.');
+        }
+
+        $target = $this->temporaryDirectory . '/destino-real';
+        mkdir($target);
+        if (!@symlink($target, $this->temporaryDirectory . '/2026')) {
+            self::markTestSkipped('Sem permissão para criar symlink neste ambiente.');
+        }
+
+        $generator = new VendaTxtGenerator($this->temporaryDirectory, new VendaTxtFormatter(), 'DEMO');
+        $periodo = PeriodoExportacao::doDia(new DateTimeImmutable('2026-08-06'));
+
+        $this->expectException(ArquivoVendaException::class);
+        $generator->gerar($periodo, [], 24);
+    }
+
     public function testRecusaIdentificadorDeEmpresaInvalido(): void
     {
         $this->expectException(\InvalidArgumentException::class);

@@ -54,27 +54,25 @@ final readonly class VendaTxtGenerator implements VendaArquivoGenerator
             . DIRECTORY_SEPARATOR
             . $fileName;
 
-        $partialPath = $finalPath . '.part';
+        // O nome aleatório impede colisões entre execuções e evita
+        // reutilizar/remover arquivos parciais pertencentes a terceiros.
+        $partialPath = $finalPath . '.' . bin2hex(random_bytes(16)) . '.part';
 
-        if (is_file($finalPath)) {
-            throw ArquivoVendaException::fileAlreadyExists(
-                $fileName
-            );
-        }
-
-        if (is_file($partialPath)) {
-            @unlink($partialPath);
-        }
-
-        $handle = fopen(
-            $partialPath,
-            'wb'
-        );
+        // "x+b" cria um arquivo novo e falha se o caminho já existir.
+        // Não segue links simbólicos previamente posicionados no caminho final.
+        $handle = @fopen($partialPath, 'x+b');
 
         if ($handle === false) {
-            throw ArquivoVendaException::fileCouldNotBeOpened(
-                $fileName
-            );
+            throw ArquivoVendaException::fileCouldNotBeOpened($fileName);
+        }
+
+        // A escrita deve ficar restrita ao usuário do processo em Unix.
+        // No Windows, a ACL do diretório é a proteção determinante.
+        if (DIRECTORY_SEPARATOR === '/' && !@chmod($partialPath, 0600)) {
+            fclose($handle);
+            @unlink($partialPath);
+
+            throw ArquivoVendaException::fileCouldNotBeOpened($fileName);
         }
 
         $recordCount = 0;
@@ -104,7 +102,10 @@ final readonly class VendaTxtGenerator implements VendaArquivoGenerator
                 throw ArquivoVendaException::writeFailed();
             }
 
-            fclose($handle);
+            if (!fclose($handle)) {
+                $handle = null;
+                throw ArquivoVendaException::writeFailed();
+            }
             $handle = null;
 
             $hash = hash_file(
@@ -124,9 +125,21 @@ final readonly class VendaTxtGenerator implements VendaArquivoGenerator
                 throw ArquivoVendaException::sizeCouldNotBeDetermined();
             }
 
-            if (!rename($partialPath, $finalPath)) {
+            // link() publica o inode sem substituir um destino existente.
+            // Diferentemente de rename(), falha atomicamente se já houver
+            // arquivo, diretório ou symlink no destino final. Ambos os
+            // caminhos estão no mesmo diretório/volume.
+            // Se o filesystem não suportar hard links, falha de forma segura.
+            if (!@link($partialPath, $finalPath)) {
+                if (file_exists($finalPath) || is_link($finalPath)) {
+                    throw ArquivoVendaException::fileAlreadyExists($fileName);
+                }
+
                 throw ArquivoVendaException::finalizeFailed();
             }
+
+            // A publicação foi concluída; o link temporário é descartável.
+            @unlink($partialPath);
 
             return new ArquivoVendaGerado(
                 nome: $fileName,
@@ -141,9 +154,8 @@ final readonly class VendaTxtGenerator implements VendaArquivoGenerator
                 fclose($handle);
             }
 
-            if (is_file($partialPath)) {
-                @unlink($partialPath);
-            }
+            // Só remove o temporário exclusivo desta execução.
+            @unlink($partialPath);
 
             if ($exception instanceof ArquivoVendaException) {
                 throw $exception;
@@ -162,13 +174,18 @@ final readonly class VendaTxtGenerator implements VendaArquivoGenerator
         mixed $handle,
         string $content
     ): void {
-        $bytesWritten = fwrite(
-            $handle,
-            $content . self::LINE_ENDING
-        );
+        $line = $content . self::LINE_ENDING;
+        $length = strlen($line);
+        $offset = 0;
 
-        if ($bytesWritten === false) {
-            throw ArquivoVendaException::writeFailed();
+        while ($offset < $length) {
+            $bytesWritten = fwrite($handle, substr($line, $offset));
+
+            if ($bytesWritten === false || $bytesWritten === 0) {
+                throw ArquivoVendaException::writeFailed();
+            }
+
+            $offset += $bytesWritten;
         }
     }
 
@@ -205,21 +222,22 @@ final readonly class VendaTxtGenerator implements VendaArquivoGenerator
     private function ensureDirectoryExists(
         string $directory
     ): void {
-        if (is_dir($directory)) {
-            return;
+        // Não seguir links simbólicos no caminho da área de exportação.
+        // Esta verificação não substitui ACLs que impeçam renomear diretórios.
+        $current = $directory;
+        while ($current !== dirname($current)) {
+            if (is_link($current)) {
+                throw ArquivoVendaException::directoryCouldNotBeCreated($directory);
+            }
+            $current = dirname($current);
         }
 
-        if (
-            !mkdir(
-                $directory,
-                0775,
-                true
-            )
-            && !is_dir($directory)
-        ) {
-            throw ArquivoVendaException::directoryCouldNotBeCreated(
-                $directory
-            );
+        if (!is_dir($directory) && !@mkdir($directory, 0770, true) && !is_dir($directory)) {
+            throw ArquivoVendaException::directoryCouldNotBeCreated($directory);
+        }
+
+        if (is_link($directory) || !is_dir($directory)) {
+            throw ArquivoVendaException::directoryCouldNotBeCreated($directory);
         }
     }
 }
